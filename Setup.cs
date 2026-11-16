@@ -14,17 +14,28 @@ using Microsoft.Win32;
 static class SetupProgram
 {
     [STAThread]
-    static void Main()
+    static int Main(string[] args)
     {
+        // /silent (also /S, /quiet): install with defaults and no UI - used by winget.
+        foreach (var a in args)
+        {
+            string x = a.ToLowerInvariant();
+            if (x == "/silent" || x == "/s" || x == "/quiet" || x == "/verysilent")
+            {
+                try { Wizard.Install(true, false); return 0; }
+                catch (Exception ex) { Console.Error.WriteLine("Install failed: " + ex.Message); return 1; }
+            }
+        }
         Application.EnableVisualStyles();
         Application.Run(new Wizard());
+        return 0;
     }
 }
 
 class Wizard : Form
 {
     // Must match the paths/keys used by WideAwake.exe /uninstall.
-    const string AppName = "WideAwake", Version = "1.7";
+    const string AppName = "WideAwake", Version = "1.8";
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\WideAwake";
     static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
@@ -127,7 +138,7 @@ class Wizard : Form
         if (page == 1)
         {
             UseWaitCursor = true; Enabled = false;
-            try { Install(); ShowPage(2); }
+            try { Install(startup.Checked, desktop.Checked); ShowPage(2); }
             catch (Exception ex) { MessageBox.Show(this, "Install failed: " + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
             finally { UseWaitCursor = false; Enabled = true; }
             return;
@@ -136,26 +147,41 @@ class Wizard : Form
         Close();
     }
 
-    void Install()
+    public static void Install(bool runAtStartup, bool desktopShortcut)
     {
         // Close a running copy so the exe can be replaced.
         foreach (var p in Process.GetProcessesByName(AppName))
             using (p) { try { p.Kill(); p.WaitForExit(5000); } catch (Exception) { } }
 
         Directory.CreateDirectory(Dir);
-        using (var res = Assembly.GetExecutingAssembly().GetManifestResourceStream(AppName + ".exe"))
+        // Retry for a few seconds: right after an uninstall, antivirus or Explorer can briefly
+        // hold the old file (pending delete), which makes the write fail with "access denied".
+        for (int attempt = 0; ; attempt++)
         {
-            if (res == null) throw new InvalidOperationException("Setup is damaged (WideAwake.exe is missing from it).");
-            using (var f = File.Create(Exe)) res.CopyTo(f);
+            try
+            {
+                Directory.CreateDirectory(Dir);
+                using (var res = Assembly.GetExecutingAssembly().GetManifestResourceStream(AppName + ".exe"))
+                {
+                    if (res == null) throw new InvalidOperationException("Setup is damaged (WideAwake.exe is missing from it).");
+                    using (var f = File.Create(Exe)) res.CopyTo(f);
+                }
+                break;
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is IOException || ex is UnauthorizedAccessException) || attempt >= 20) throw;
+                System.Threading.Thread.Sleep(500);
+            }
         }
 
         CreateShortcut(StartMenuLnk, Exe);
-        if (desktop.Checked) CreateShortcut(DesktopLnk, Exe);
+        if (desktopShortcut) CreateShortcut(DesktopLnk, Exe);
         else if (File.Exists(DesktopLnk)) File.Delete(DesktopLnk);
 
         using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
         {
-            if (startup.Checked) k.SetValue(AppName, "\"" + Exe + "\"");
+            if (runAtStartup) k.SetValue(AppName, "\"" + Exe + "\"");
             else k.DeleteValue(AppName, false);
         }
 
@@ -163,10 +189,12 @@ class Wizard : Form
         {
             k.SetValue("DisplayName", AppName);
             k.SetValue("DisplayVersion", Version);
-            k.SetValue("Publisher", AppName);
+            k.SetValue("Publisher", "Kyle Pantall");
             k.SetValue("DisplayIcon", Exe);
             k.SetValue("InstallLocation", Dir);
             k.SetValue("UninstallString", "\"" + Exe + "\" /uninstall");
+            k.SetValue("QuietUninstallString", "\"" + Exe + "\" /uninstall /quiet");
+            k.SetValue("URLInfoAbout", "https://github.com/kylepantall/WideAwake");
             k.SetValue("EstimatedSize", (int)Math.Max(1, new FileInfo(Exe).Length / 1024), RegistryValueKind.DWord);
             k.SetValue("NoModify", 1, RegistryValueKind.DWord);
             k.SetValue("NoRepair", 1, RegistryValueKind.DWord);

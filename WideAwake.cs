@@ -19,7 +19,7 @@ static class Program
     static void Main(string[] args)
     {
         string cmd = args.Length > 0 ? args[0].ToLowerInvariant() : "";
-        if (cmd == "/uninstall") { Uninstaller.Run(); return; } // called from Settings > Apps; install via WideAwakeSetup.exe
+        if (cmd == "/uninstall") { Uninstaller.Run(Array.Exists(args, a => a.ToLowerInvariant() == "/quiet")); return; } // called from Settings > Apps; install via WideAwakeSetup.exe
 
         bool created;
         using (var mutex = new Mutex(true, "WideAwake_SingleInstance", out created))
@@ -407,9 +407,9 @@ static class Uninstaller
     static readonly string Shortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Name + ".lnk");
     static readonly string DesktopShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Name + ".lnk");
 
-    public static void Run()
+    public static void Run(bool quiet)
     {
-        if (MessageBox.Show("Remove WideAwake from this PC?", Name, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        if (!quiet && MessageBox.Show("Remove WideAwake from this PC?", Name, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         try
         {
             StopRunning();
@@ -421,14 +421,14 @@ static class Uninstaller
             bool runningFromDir = string.Equals(Path.GetDirectoryName(Path.GetFullPath(Application.ExecutablePath)), Dir, StringComparison.OrdinalIgnoreCase);
             if (Directory.Exists(Dir) && !runningFromDir) Directory.Delete(Dir, true);
 
-            MessageBox.Show("WideAwake has been removed.", Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (!quiet) MessageBox.Show("WideAwake has been removed.", Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             // A running exe can't delete itself, so a hidden cmd removes the folder once we've exited.
             if (runningFromDir)
                 Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \"" + Dir + "\"")
                     { CreateNoWindow = true, UseShellExecute = false });
         }
-        catch (Exception ex) { MessageBox.Show("Uninstall failed: " + ex.Message, Name, MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception ex) { if (!quiet) MessageBox.Show("Uninstall failed: " + ex.Message, Name, MessageBoxButtons.OK, MessageBoxIcon.Error); Environment.ExitCode = 1; }
     }
 
     static void StopRunning()

@@ -1,0 +1,104 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    # Code signing through SignPath Foundation (free for open-source projects) switches on
+    # once these repository settings exist:
+    #   secret   SIGNPATH_API_TOKEN
+    #   variable SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_SIGNING_POLICY_SLUG
+    # Until then the build is unsigned.
+    env:
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. The app
+      - name: Build WideAwake.exe
+        shell: cmd
+        run: Build.cmd app
+
+      - name: Upload WideAwake.exe for signing
+        if: env.SIGN == 'true'
+        id: app-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned
+          path: WideAwake.exe
+
+      - name: Sign WideAwake.exe
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.app-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-app
+
+      - name: Use signed WideAwake.exe
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Copy-Item signed-app\WideAwake.exe . -Force
+
+      # 2. The installer (embeds the app built above, signed if signing is on)
+      - name: Build WideAwakeSetup.exe
+        shell: cmd
+        run: Build.cmd setup
+
+      - name: Upload WideAwakeSetup.exe for signing
+        if: env.SIGN == 'true'
+        id: setup-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-unsigned
+          path: WideAwakeSetup.exe
+
+      - name: Sign WideAwakeSetup.exe
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.setup-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-setup
+
+      - name: Use signed WideAwakeSetup.exe
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Copy-Item signed-setup\WideAwakeSetup.exe . -Force
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: WideAwake
+          path: |
+            WideAwake.exe
+            WideAwakeSetup.exe
+
+      # 3. Tags like v1.8 publish a GitHub release with the installer attached.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          $setupVersion = (Select-String -Path Setup.cs -Pattern 'Version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($setupVersion -ne $version) { throw "Tag $env:GITHUB_REF_NAME does not match Version = `"$setupVersion`" in Setup.cs" }
+          gh release create $env:GITHUB_REF_NAME WideAwakeSetup.exe --title "WideAwake $version" --generate-notes

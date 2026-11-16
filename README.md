@@ -25,9 +25,17 @@ On Modern Standby laptops (most recent ones), turning the display off with Windo
 
 ## Install
 
-Run `WideAwakeSetup.exe`. It installs for the current user only, so it doesn't need admin rights. It installs to `%LOCALAPPDATA%\Programs\WideAwake`, adds a Start menu shortcut, and can optionally start with Windows and add a desktop shortcut.
+Download `WideAwakeSetup.exe` from the [latest release](https://github.com/kylepantall/WideAwake/releases/latest) and run it. It installs for the current user only, so it doesn't need admin rights. It installs to `%LOCALAPPDATA%\Programs\WideAwake`, adds a Start menu shortcut, and can optionally start with Windows and add a desktop shortcut.
 
 To uninstall, go to **Settings → Apps → Installed apps → WideAwake**, or run `Uninstall.cmd`.
+
+For scripted installs, `WideAwakeSetup.exe /silent` installs with the defaults and no window, and `WideAwake.exe /uninstall /quiet` removes it without asking.
+
+### SmartScreen and antivirus warnings
+
+The installer isn't code-signed yet, so Windows SmartScreen may warn you. Click **More info → Run anyway**.
+
+Some antivirus products flag WideAwake as "potentially unwanted" because it does things that malware also does: it blocks keyboard input during Lights out, starts with Windows, and its installer writes a program to disk. If yours does, you can restore it from quarantine and add an exception, and please report it to your antivirus vendor as a false positive. The source code is all in this repository, so you can check exactly what it does.
 
 ## Build
 
@@ -37,7 +45,13 @@ You don't need to install any tools; it uses the C# compiler that comes with Win
 Build.cmd
 ```
 
-This produces `WideAwake.exe` and `WideAwakeSetup.exe`, which has `WideAwake.exe` built in.
+This produces `WideAwake.exe` and `WideAwakeSetup.exe`, which has `WideAwake.exe` built in. `Build.cmd app` and `Build.cmd setup` build just one of them.
+
+GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) builds every push. Pushing a tag such as `v1.8` publishes a release with the installer attached; the tag must match `Version` in `Setup.cs`. Code signing through [SignPath Foundation](https://signpath.org) switches on once its repository secret and variables are set; the workflow file lists them.
+
+## License
+
+[MIT](LICENSE)
 
 | File | What it is |
 | --- | --- |
