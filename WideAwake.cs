@@ -32,37 +32,51 @@ static class Program
     }
 }
 
-// Windows 11 (Fluent) style card: rounded corners, follows light/dark theme and accent colour,
+// Windows 11 (Fluent) style card, drawn as a per-pixel-alpha layered window so the rounded
+// corners are truly transparent and it gets a soft shadow (DWM rounding doesn't apply to
+// layered windows, which any fade needs). Follows light/dark theme and accent colour;
 // optional progress bar and up to two buttons (Enter = primary, Esc = secondary).
 class FluentToast : Form
 {
-    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-    const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20, DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWA_BORDER_COLOR = 34, DWMWCP_ROUND = 2;
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
+    [StructLayout(LayoutKind.Sequential)] struct SIZE { public int cx, cy; }
+    [StructLayout(LayoutKind.Sequential, Pack = 1)] struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr obj);
+    const int WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000, ULW_ALPHA = 2;
 
     public event Action PrimaryClick, SecondaryClick;
     readonly bool activate, dark;
-    readonly Color bg, footerBg, fg, subFg, accent, onAccent, track, buttonBg, buttonBorder;
-    readonly Font glyphFont, titleFont, bodyFont;
-    readonly string glyph, body, primaryText, secondaryText;
-    readonly float s;
+    readonly Color bg, footerBg, fg, subFg, accent, onAccent, track, buttonBg, buttonBorder, edge;
+    readonly Font titleFont, bodyFont;
+    readonly Image logo;
+    readonly string body, primaryText, secondaryText;
+    readonly float s, radius;
+    readonly int margin, cardW, cardH; // margin = room around the card for the shadow
     string title;
     double progress = -1; // 0..1, or -1 for no bar
-    RectangleF glyphRect, titleRect, bodyRect, barRect;
+    RectangleF logoRect, titleRect, bodyRect, barRect;
     Rectangle primaryRect, secondaryRect;
     int footerTop = -1, hover; // hover: 1 = primary, 2 = secondary
     readonly System.Windows.Forms.Timer fade = new System.Windows.Forms.Timer { Interval = 15 };
     bool closing;
+    int alpha; // whole-window fade, 0..255
 
-    public FluentToast(string glyph, string title, string body, bool activate,
+    public FluentToast(string title, string body, bool activate,
                        string primaryText = null, string secondaryText = null, bool showProgress = false)
     {
-        this.glyph = glyph; this.title = title; this.body = body; this.activate = activate;
+        this.title = title; this.body = body; this.activate = activate;
         this.primaryText = primaryText; this.secondaryText = secondaryText;
         if (showProgress) progress = 1;
 
         FormBorderStyle = FormBorderStyle.None;
-        ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
-        DoubleBuffered = true; KeyPreview = true; Opacity = 0;
+        ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual; KeyPreview = true;
 
         dark = IsDarkTheme();
         bg = dark ? Color.FromArgb(43, 43, 43) : Color.FromArgb(249, 249, 249);
@@ -72,22 +86,24 @@ class FluentToast : Form
         track = dark ? Color.FromArgb(72, 72, 72) : Color.FromArgb(219, 219, 219);
         buttonBg = dark ? Color.FromArgb(55, 55, 55) : Color.White;
         buttonBorder = dark ? Color.FromArgb(68, 68, 68) : Color.FromArgb(229, 229, 229);
+        edge = dark ? Color.FromArgb(64, 64, 64) : Color.FromArgb(222, 222, 222);
         accent = AccentColor(dark);
         onAccent = dark ? Color.Black : Color.White;
-        BackColor = bg;
 
-        glyphFont = PickFont(new[] { "Segoe Fluent Icons", "Segoe MDL2 Assets" }, 20f);
         titleFont = PickFont(new[] { "Segoe UI Variable Display Semibold", "Segoe UI Semibold" }, 15f);
         bodyFont = PickFont(new[] { "Segoe UI Variable Text", "Segoe UI" }, 10.5f);
 
         using (var g = CreateGraphics()) s = g.DpiX / 96f;
+        using (var ico = AppIcon.Get((int)(36 * s))) logo = ico.ToBitmap();
+        radius = 8 * s;
+        margin = (int)(28 * s);
         float pad = 24 * s, w = 420 * s, textX = pad + 44 * s, textW = w - textX - pad;
         float y = pad;
         using (var g = CreateGraphics())
         {
             float titleH = g.MeasureString("Ag", titleFont).Height;
             float bodyH = g.MeasureString(body, bodyFont, (int)textW).Height;
-            glyphRect = new RectangleF(pad, y + 2 * s, 40 * s, 40 * s);
+            logoRect = new RectangleF(pad, y + 2 * s, 36 * s, 36 * s);
             titleRect = new RectangleF(textX, y, textW, titleH);
             y += titleH + 2 * s;
             bodyRect = new RectangleF(textX, y, textW, bodyH);
@@ -105,23 +121,27 @@ class FluentToast : Form
             if (secondaryText != null) secondaryRect = new Rectangle(primaryText != null ? (int)pad + bw + gap : (int)pad, by, bw, bh);
             y += pad * 2 + bh;
         }
-        ClientSize = new Size((int)w, (int)y);
+        cardW = (int)w; cardH = (int)y;
         var area = Screen.PrimaryScreen.WorkingArea;
-        Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + (area.Height - Height) / 2);
+        Bounds = new Rectangle(area.Left + (area.Width - cardW) / 2 - margin, area.Top + (area.Height - cardH) / 2 - margin,
+                               cardW + 2 * margin, cardH + 2 * margin);
 
         fade.Tick += (o, e) =>
         {
-            if (closing) { Opacity -= 0.12; if (Opacity <= 0) { fade.Stop(); Close(); } }
-            else { Opacity += 0.15; if (Opacity >= 1) fade.Stop(); }
+            if (closing) { alpha = Math.Max(0, alpha - 32); if (alpha == 0) { fade.Stop(); Close(); return; } }
+            else { alpha = Math.Min(255, alpha + 40); if (alpha == 255) fade.Stop(); }
+            Render();
         };
     }
 
-    public string Title { set { title = value; Invalidate(); } }
-    public double Progress { set { progress = Math.Max(0, Math.Min(1, value)); Invalidate(); } }
+    public string Title { set { title = value; Render(); } }
+    public double Progress { set { progress = Math.Max(0, Math.Min(1, value)); Render(); } }
 
     public void ShowCard()
     {
+        alpha = 0;
         Show();
+        Render();
         if (activate) Activate();
         fade.Start();
     }
@@ -142,27 +162,70 @@ class FluentToast : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= 0x80; // WS_EX_TOOLWINDOW: keep out of Alt+Tab
-            if (!activate) cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+            cp.ExStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW; // toolwindow: keep out of Alt+Tab
+            if (!activate) cp.ExStyle |= WS_EX_NOACTIVATE;
             return cp;
         }
     }
 
-    protected override void OnHandleCreated(EventArgs e)
+    protected override void OnPaintBackground(PaintEventArgs e) { } // all drawing goes through Render()
+
+    // Draws the card into a 32-bit bitmap and hands it to Windows with per-pixel alpha.
+    void Render()
     {
-        base.OnHandleCreated(e);
-        int v = DWMWCP_ROUND; DwmSetWindowAttribute(Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref v, 4);
-        v = IsDarkTheme() ? 1 : 0; DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, 4);
-        v = IsDarkTheme() ? 0x3A3A3A : 0xE5E5E5; DwmSetWindowAttribute(Handle, DWMWA_BORDER_COLOR, ref v, 4);
+        if (IsDisposed || !IsHandleCreated) return;
+        using (var bmp = new Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+        {
+            using (var g = Graphics.FromImage(bmp)) { g.Clear(Color.Transparent); Draw(g); }
+            IntPtr screen = GetDC(IntPtr.Zero), mem = CreateCompatibleDC(screen), hbmp = bmp.GetHbitmap(Color.FromArgb(0)), old = SelectObject(mem, hbmp);
+            try
+            {
+                var size = new SIZE { cx = Width, cy = Height };
+                var src = new POINT();
+                var dst = new POINT { x = Left, y = Top };
+                var blend = new BLENDFUNCTION { BlendOp = 0, BlendFlags = 0, SourceConstantAlpha = (byte)alpha, AlphaFormat = 1 };
+                UpdateLayeredWindow(Handle, screen, ref dst, ref size, mem, ref src, 0, ref blend, ULW_ALPHA);
+            }
+            finally { SelectObject(mem, old); DeleteObject(hbmp); DeleteDC(mem); ReleaseDC(IntPtr.Zero, screen); }
+        }
     }
 
-    protected override void OnPaint(PaintEventArgs e)
+    void Draw(Graphics g)
     {
-        var g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit; // ClearType needs an opaque target
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
 
-        using (var b = new SolidBrush(accent)) g.DrawString(glyph, glyphFont, b, glyphRect);
+        // Soft shadow: stacked, slightly offset rounded rects with low alpha.
+        // Layers get darker towards the card (quadratic falloff) so the outer edge fades to nothing.
+        const int steps = 24;
+        float spread = margin - 6 * s;
+        for (int i = 0; i < steps; i++)
+        {
+            float t = (float)(i + 1) / steps;            // 0 = outermost, 1 = card edge
+            float grow = spread * (1 - t);
+            int a = (int)Math.Round((dark ? 9 : 6) * t * t);
+            if (a == 0) continue;
+            var r = new RectangleF(margin - grow, margin - grow + 4 * s, cardW + 2 * grow, cardH + 2 * grow);
+            using (var b = new SolidBrush(Color.FromArgb(a, 0, 0, 0))) FillRound(g, b, r, radius + grow);
+        }
+
+        g.TranslateTransform(margin, margin);
+        var card = new RectangleF(0, 0, cardW, cardH);
+        using (var path = Round(card, radius))
+        {
+            using (var b = new SolidBrush(bg)) g.FillPath(b, path);
+            g.SetClip(path);
+            if (footerTop >= 0)
+            {
+                using (var b = new SolidBrush(footerBg)) g.FillRectangle(b, 0, footerTop, cardW, cardH - footerTop);
+                using (var p = new Pen(buttonBorder)) g.DrawLine(p, 0, footerTop, cardW, footerTop);
+            }
+            g.ResetClip();
+            using (var p = new Pen(edge)) using (var e = Round(new RectangleF(0.5f, 0.5f, cardW - 1, cardH - 1), radius)) g.DrawPath(p, e);
+        }
+
+        g.DrawImage(logo, logoRect);
         using (var b = new SolidBrush(fg)) g.DrawString(title, titleFont, b, titleRect);
         using (var b = new SolidBrush(subFg)) g.DrawString(body, bodyFont, b, bodyRect);
 
@@ -175,37 +238,38 @@ class FluentToast : Form
                     FillRound(g, b, new RectangleF(barRect.X, barRect.Y, Math.Max(barRect.Height, barRect.Width * (float)progress), barRect.Height), r);
         }
 
-        if (footerTop >= 0)
-        {
-            using (var b = new SolidBrush(footerBg)) g.FillRectangle(b, 0, footerTop, ClientSize.Width, ClientSize.Height - footerTop);
-            using (var p = new Pen(buttonBorder)) g.DrawLine(p, 0, footerTop, ClientSize.Width, footerTop);
-            if (primaryText != null)
-                DrawButton(g, primaryRect, primaryText, hover == 1 ? Blend(accent, dark ? Color.Black : Color.White, 0.1) : accent, onAccent, null);
-            if (secondaryText != null)
-                DrawButton(g, secondaryRect, secondaryText, hover == 2 ? Blend(buttonBg, dark ? Color.White : Color.Black, 0.05) : buttonBg, fg, buttonBorder);
-        }
+        if (primaryText != null)
+            DrawButton(g, primaryRect, primaryText, hover == 1 ? Blend(accent, dark ? Color.Black : Color.White, 0.1) : accent, onAccent, null);
+        if (secondaryText != null)
+            DrawButton(g, secondaryRect, secondaryText, hover == 2 ? Blend(buttonBg, dark ? Color.White : Color.Black, 0.05) : buttonBg, fg, buttonBorder);
     }
 
     void DrawButton(Graphics g, Rectangle r, string text, Color fill, Color textColor, Color? border)
     {
         using (var b = new SolidBrush(fill)) FillRound(g, b, r, 4 * s);
         if (border.HasValue) using (var p = new Pen(border.Value)) using (var path = Round(new RectangleF(r.X + 0.5f, r.Y + 0.5f, r.Width - 1, r.Height - 1), 4 * s)) g.DrawPath(p, path);
-        TextRenderer.DrawText(g, text, bodyFont, r, textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        using (var b = new SolidBrush(textColor))
+        using (var f = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            g.DrawString(text, bodyFont, b, r, f);
     }
+
+    Point CardPoint(Point p) { return new Point(p.X - margin, p.Y - margin); }
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        int h = primaryText != null && primaryRect.Contains(e.Location) ? 1 : secondaryText != null && secondaryRect.Contains(e.Location) ? 2 : 0;
-        if (h != hover) { hover = h; Cursor = h != 0 ? Cursors.Hand : Cursors.Default; Invalidate(); }
+        var p = CardPoint(e.Location);
+        int h = primaryText != null && primaryRect.Contains(p) ? 1 : secondaryText != null && secondaryRect.Contains(p) ? 2 : 0;
+        if (h != hover) { hover = h; Cursor = h != 0 ? Cursors.Hand : Cursors.Default; Render(); }
         base.OnMouseMove(e);
     }
 
-    protected override void OnMouseLeave(EventArgs e) { if (hover != 0) { hover = 0; Invalidate(); } base.OnMouseLeave(e); }
+    protected override void OnMouseLeave(EventArgs e) { if (hover != 0) { hover = 0; Render(); } base.OnMouseLeave(e); }
 
     protected override void OnMouseClick(MouseEventArgs e)
     {
-        if (primaryText != null && primaryRect.Contains(e.Location) && PrimaryClick != null) PrimaryClick();
-        else if (secondaryText != null && secondaryRect.Contains(e.Location) && SecondaryClick != null) SecondaryClick();
+        var p = CardPoint(e.Location);
+        if (primaryText != null && primaryRect.Contains(p) && PrimaryClick != null) PrimaryClick();
+        else if (secondaryText != null && secondaryRect.Contains(p) && SecondaryClick != null) SecondaryClick();
         base.OnMouseClick(e);
     }
 
@@ -218,7 +282,7 @@ class FluentToast : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        fade.Dispose(); glyphFont.Dispose(); titleFont.Dispose(); bodyFont.Dispose();
+        fade.Dispose(); logo.Dispose(); titleFont.Dispose(); bodyFont.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -276,6 +340,16 @@ class FluentToast : Form
     static Color Blend(Color a, Color b, double t)
     {
         return Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+    }
+}
+
+// The WideAwake logo, embedded from assets\WideAwake.ico (see Build.cmd).
+static class AppIcon
+{
+    public static Icon Get(int size)
+    {
+        using (var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("WideAwake.ico"))
+            return s != null ? new Icon(s, size, size) : (Icon)SystemIcons.Application.Clone();
     }
 }
 
@@ -420,7 +494,7 @@ class WideAwake : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (s, e) => Close());
 
-        tray.Icon = SystemIcons.Shield;
+        tray.Icon = AppIcon.Get(SystemInformation.SmallIconSize.Width);
         tray.ContextMenuStrip = menu;
         tray.Visible = true;
         tray.DoubleClick += (s, e) => RequestLightsOut();
@@ -458,7 +532,7 @@ class WideAwake : Form
     {
         if (hook != IntPtr.Zero || countdown != null) return;
         const int total = 5000;
-        var card = new FluentToast("", "Lights out in 5",
+        var card = new FluentToast("Lights out in 5",
             "The screen and keyboard light will turn off. Your PC stays awake and reachable. Hold Esc for 3 seconds to turn them back on.",
             true, "Start now", "Cancel", true);
         countdown = card;
@@ -536,7 +610,7 @@ class WideAwake : Form
         UpdateAwake();
         if (notify)
         {
-            var card = new FluentToast("", "Lights back on", "Screen and keyboard light are restored.", false);
+            var card = new FluentToast("Lights back on", "Screen and keyboard light are restored.", false);
             card.ShowCard();
             card.AutoClose(2500);
         }

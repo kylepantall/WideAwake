@@ -24,7 +24,7 @@ static class SetupProgram
 class Wizard : Form
 {
     // Must match the paths/keys used by WideAwake.exe /uninstall.
-    const string AppName = "WideAwake", Version = "1.5";
+    const string AppName = "WideAwake", Version = "1.7";
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\WideAwake";
     static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
@@ -41,7 +41,7 @@ class Wizard : Form
     public Wizard()
     {
         Text = AppName + " Setup";
-        Icon = SystemIcons.Shield;
+        Icon = LoadIcon(32);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -52,7 +52,7 @@ class Wizard : Form
         var header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Color.White };
         title.SetBounds(20, 12, 480, 22); title.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
         subtitle.SetBounds(20, 36, 480, 20);
-        var icon = new PictureBox { Image = SystemIcons.Shield.ToBitmap(), SizeMode = PictureBoxSizeMode.CenterImage };
+        var icon = new PictureBox { Image = LoadIcon(40).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom };
         icon.SetBounds(456, 12, 48, 40);
         header.Controls.AddRange(new Control[] { title, subtitle, icon });
         var line = new Label { Dock = DockStyle.Top, Height = 1, BackColor = SystemColors.ControlDark };
@@ -80,12 +80,18 @@ class Wizard : Form
         pages[1] = Page(startup, desktop, note);
 
         launch.Text = "Launch " + AppName + " now"; launch.Checked = true; launch.SetBounds(0, 110, 440, 24);
-        pages[2] = Page(Text1(AppName + " has been installed.\n\nIt runs in the system tray (look for the shield icon " +
+        pages[2] = Page(Text1(AppName + " has been installed.\n\nIt runs in the system tray (look for the eye icon " +
                               "near the clock; it may be under the ^ arrow).", 100), launch);
 
         Controls.AddRange(pages);
         Controls.AddRange(new Control[] { back, next, cancel, line, header });
         ShowPage(0);
+    }
+
+    static Icon LoadIcon(int size)
+    {
+        using (var st = Assembly.GetExecutingAssembly().GetManifestResourceStream("WideAwake.ico"))
+            return st != null ? new Icon(st, size, size) : (Icon)SystemIcons.Application.Clone();
     }
 
     static Panel Page(params Control[] items)

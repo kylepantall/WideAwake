@@ -1,3 +1,5 @@
+<img src="assets/icon-256.png" alt="WideAwake logo" width="96">
+
 # WideAwake
 
 A small Windows tray app that keeps your PC awake while it's plugged in, so you can still reach it over SSH, Remote Desktop or Tailscale, and a **Lights out** mode that darkens the screen and keyboard.
@@ -43,3 +45,12 @@ This produces `WideAwake.exe` and `WideAwakeSetup.exe`, which has `WideAwake.exe
 | `Setup.cs` | The setup wizard |
 | `Build.cmd` | Builds both programs |
 | `Uninstall.cmd` | Runs the installed uninstaller |
+| `assets/logo.svg` | The logo source (256-unit grid) |
+| `assets/MakeIcon.cs` | Renders the logo to `WideAwake.ico` and the PNGs, using the same geometry as the SVG |
+
+To regenerate the icon after changing the design:
+
+```bat
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /out:MakeIcon.exe /r:System.Drawing.dll assets\MakeIcon.cs
+MakeIcon.exe assets
+```
