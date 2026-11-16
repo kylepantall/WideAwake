@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: KylePantall.WideAwake
+PackageVersion: "1.8"
+Platform:
+  - Windows.Desktop
+MinimumOSVersion: 10.0.0.0
+InstallerType: exe
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+InstallerSwitches:
+  Silent: /silent
+  SilentWithProgress: /silent
+UpgradeBehavior: install
+ProductCode: WideAwake
+AppsAndFeaturesEntries:
+  - DisplayName: WideAwake
+    Publisher: Kyle Pantall
+    DisplayVersion: "1.8"
+    ProductCode: WideAwake
+Installers:
+  - Architecture: neutral
+    InstallerUrl: https://github.com/kylepantall/WideAwake/releases/download/v1.8/WideAwakeSetup.exe
+    InstallerSha256: 96CA041A3728D37663AC483253A9D8BC381437807EE8ACA59AE185B192B870E4
+ManifestType: installer
+ManifestVersion: 1.6.0

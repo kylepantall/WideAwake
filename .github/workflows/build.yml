@@ -21,7 +21,7 @@ jobs:
     env:
       SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 1. The app
       - name: Build WideAwake.exe
@@ -31,7 +31,7 @@ jobs:
       - name: Upload WideAwake.exe for signing
         if: env.SIGN == 'true'
         id: app-unsigned
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-unsigned
           path: WideAwake.exe
@@ -61,7 +61,7 @@ jobs:
       - name: Upload WideAwakeSetup.exe for signing
         if: env.SIGN == 'true'
         id: setup-unsigned
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: setup-unsigned
           path: WideAwakeSetup.exe
@@ -84,7 +84,7 @@ jobs:
         run: Copy-Item signed-setup\WideAwakeSetup.exe . -Force
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: WideAwake
           path: |

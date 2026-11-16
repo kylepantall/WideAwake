@@ -29,6 +29,8 @@ Download `WideAwakeSetup.exe` from the [latest release](https://github.com/kylep
 
 To uninstall, go to **Settings → Apps → Installed apps → WideAwake**, or run `Uninstall.cmd`.
 
+A winget manifest is in [`winget/manifests`](winget/manifests). Once it's accepted into the Windows Package Manager community repository, you'll be able to install with `winget install KylePantall.WideAwake`.
+
 For scripted installs, `WideAwakeSetup.exe /silent` installs with the defaults and no window, and `WideAwake.exe /uninstall /quiet` removes it without asking.
 
 ### SmartScreen and antivirus warnings

@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: KylePantall.WideAwake
+PackageVersion: "1.8"
+PackageLocale: en-US
+Publisher: Kyle Pantall
+PublisherUrl: https://github.com/kylepantall
+PublisherSupportUrl: https://github.com/kylepantall/WideAwake/issues
+PackageName: WideAwake
+PackageUrl: https://github.com/kylepantall/WideAwake
+License: MIT
+LicenseUrl: https://github.com/kylepantall/WideAwake/blob/main/LICENSE
+ShortDescription: Keeps your PC awake while plugged in, with a Lights out mode that darkens the screen and keyboard while staying reachable.
+Description: |-
+  WideAwake is a small tray app that stops Windows sleeping while the PC is on AC power, so it stays reachable over SSH, Remote Desktop or Tailscale.
+  Its Lights out mode (Ctrl+Alt+L) blacks out the screen, dims brightness, turns off the keyboard backlight on ASUS laptops and ignores key presses, without triggering Modern Standby. Hold Esc for 3 seconds to exit.
+Moniker: wideawake
+Tags:
+  - awake
+  - caffeine
+  - keep-awake
+  - power
+  - sleep
+  - tray
+ReleaseNotesUrl: https://github.com/kylepantall/WideAwake/releases/tag/v1.8
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
