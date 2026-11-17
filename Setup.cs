@@ -35,7 +35,7 @@ static class SetupProgram
 class Wizard : Form
 {
     // Must match the paths/keys used by WideAwake.exe /uninstall.
-    const string AppName = "WideAwake", Version = "1.8";
+    const string AppName = "WideAwake", Version = "1.9";
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\WideAwake";
     static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);

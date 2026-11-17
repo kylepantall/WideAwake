@@ -12,16 +12,19 @@ A small Windows tray app that keeps your PC awake while it's plugged in, so you 
   - Covers every screen with black, hides the cursor and sets brightness to 0. Black pixels are off on OLED screens.
   - Turns the keyboard backlight off on ASUS laptops (through the ASUS ACPI driver installed with MyASUS).
   - Ignores all key presses.
-  - **Hold Esc for 3 seconds** to exit (Ctrl+Alt+U also works). Brightness and keyboard light are restored, and a "Lights back on" card appears.
+  - **Hold Esc for 3 seconds** to exit (Ctrl+Alt+U also works). Brightness and keyboard light are restored and the PC **locks**, so you sign back in (Windows Hello face or fingerprint makes this quick). The screen stays black for as long as you're away; the lock screen only appears when you come back. Use Lights out instead of Win+L when you leave the PC.
+- **Lights out automatically when idle** (on by default, tray menu). While plugged in, WideAwake stops Windows turning the screen off and starts Lights out itself at the same point instead: when you've been idle for your "Turn off my screen after" time (Settings → System → Power, plugged in). A countdown card appears first, and moving the mouse or pressing a key cancels it. An automatic Lights out ends on any key or mouse movement, then locks the PC. It's off when the screen timeout is set to Never.
+- **On battery** (tray menu): stay awake down to 50% (the default), down to 30%, or sleep normally. This is for battery charge limits ("smart charging", such as an 80% cap): when the battery reaches the cap, the laptop runs off the battery and Windows reports it as unplugged, even though the charger is still in. Windows can't tell that apart from a real unplug, so WideAwake keeps going down to the floor. Below it, the PC sleeps normally until it's plugged in again.
+- **Log**: `%LOCALAPPDATA%\WideAwake\WideAwake.log` (tray menu → **Open log**). It records power-source changes, display on/off, lock/unlock, Lights out and sleep/resume, plus a heartbeat every 5 minutes, so gaps show when the PC was in standby.
 - **Start with Windows** option in the tray menu.
 
-| Entering | Exiting |
-| --- | --- |
-| ![Countdown card](docs/card_enter.png) | ![Lights back on card](docs/card_exit.png) |
+![Countdown card](docs/card_enter.png)
 
 ### Why not just turn the display off?
 
-On Modern Standby laptops (most recent ones), turning the display off with Windows' own command, or letting the screen timeout do it, puts the whole PC into standby, which cuts off network access. Lights out keeps the display technically "on" and blacks it out instead, so the PC stays reachable.
+On Modern Standby laptops (most recent ones), turning the display off with Windows' own command, or letting the screen timeout do it, puts the whole PC into standby, which cuts off network access. Lights out keeps the display technically "on" and blacks it out instead, so the PC stays reachable. This is also why keep-awake tools such as PowerToys Awake lose the connection when they're allowed to turn the screen off.
+
+If you lock the PC yourself (Win+L), WideAwake can't draw over the lock screen. Instead it keeps the display technically on, and after your screen timeout it sets brightness to 0 and turns the keyboard light off, so the PC stays reachable. Touching a key or the mouse brings the brightness back.
 
 ## Install
 
